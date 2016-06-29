@@ -22,8 +22,8 @@ class Logger(object):
         self.log.write(message)
 
     def flush(self):
-    	self.terminal.flush()
-    	self.log.flush()
+        self.terminal.flush()
+        self.log.flush()
 
 parser = argparse.ArgumentParser(description='Run a repairing seq2seq RNN.')
 parser.add_argument('task_name', help='The task to run.')
@@ -582,105 +582,105 @@ step = resume_at
 best_test_repair = 0
 
 if not args.skip_training:
-	for t in range(resume_epoch, epochs):
-	    # Training
-	    start = time.time()
-	    train_loss = []
-	    
-	    for i in range(resume_training_minibatch, num_train/batch_size):
-	        f_loss = train_batch(i)
-	        train_loss.append(f_loss)
-	        
-	        # Print progress
-	        step += 1
-	        
-	        print "Step: %d\tEpoch: %g\tLoss: %g" % (step, t + float(i+1)/(num_train/batch_size), train_loss[-1])
-	        sys.stdout.flush()
+    for t in range(resume_epoch, epochs):
+        # Training
+        start = time.time()
+        train_loss = []
+        
+        for i in range(resume_training_minibatch, num_train/batch_size):
+            f_loss = train_batch(i)
+            train_loss.append(f_loss)
+            
+            # Print progress
+            step += 1
+            
+            print "Step: %d\tEpoch: %g\tLoss: %g" % (step, t + float(i+1)/(num_train/batch_size), train_loss[-1])
+            sys.stdout.flush()
 
-	        # Checkpoint
-	        if step % ckpt_every == 0:
-	            saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
-	            print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t, i)
-	            sys.stdout.flush()
-	        
-	    train_loss = np.mean(train_loss)
-	    resume_training_minibatch = 0
+            # Checkpoint
+            if step % ckpt_every == 0:
+                saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
+                print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t, i)
+                sys.stdout.flush()
+            
+        train_loss = np.mean(train_loss)
+        resume_training_minibatch = 0
 
-	    # Checkpoint before going into validation/testing
-	    if step % ckpt_every != 0:
-	        saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
-	        print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
-	        sys.stdout.flush()
-	    
-	    print "End of Epoch: %d" % (t+1)
-	    print "[Training] Loss: %g" % (train_loss)
-	    sys.stdout.flush()
+        # Checkpoint before going into validation/testing
+        if step % ckpt_every != 0:
+            saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
+            print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
+            sys.stdout.flush()
+        
+        print "End of Epoch: %d" % (t+1)
+        print "[Training] Loss: %g" % (train_loss)
+        sys.stdout.flush()
 
-	    # Validation
-	    valid_loss   = []
-	    valid_token  = []
-	    valid_local  = []
-	    valid_repair = []
-	    
-	    for i in range(num_validation/batch_size):
-	        f_loss, f_token, f_repair, f_local = validate_batch(i)
+        # Validation
+        valid_loss   = []
+        valid_token  = []
+        valid_local  = []
+        valid_repair = []
+        
+        for i in range(num_validation/batch_size):
+            f_loss, f_token, f_repair, f_local = validate_batch(i)
 
-	        valid_loss.append(f_loss)
-	        valid_token.append(f_token)
-	        valid_local.append(f_local)
-	        valid_repair.append(f_repair)
-	        
-	    valid_loss   = np.mean(valid_loss)
-	    valid_token  = np.mean(valid_token)
-	    valid_local  = np.mean(valid_local)
-	    valid_repair = np.mean(valid_repair)
-	    
-	    # Print epoch step and validation information
-	    print "[Validation] Loss: %g Token: %g Localization: %g Repair: %g" % (valid_loss, valid_token, valid_local, valid_repair)
-	    sys.stdout.flush()
+            valid_loss.append(f_loss)
+            valid_token.append(f_token)
+            valid_local.append(f_local)
+            valid_repair.append(f_repair)
+            
+        valid_loss   = np.mean(valid_loss)
+        valid_token  = np.mean(valid_token)
+        valid_local  = np.mean(valid_local)
+        valid_repair = np.mean(valid_repair)
+        
+        # Print epoch step and validation information
+        print "[Validation] Loss: %g Token: %g Localization: %g Repair: %g" % (valid_loss, valid_token, valid_local, valid_repair)
+        sys.stdout.flush()
 
-	    if test_data_present:
-	        # Testing
-	        test_loss   = []
-	        test_token  = []
-	        test_local  = []
-	        test_repair = []
-	        
-	        for i in range(num_test/batch_size):
-	            f_loss, f_token, f_repair, f_local = test_batch(i)
+        if test_data_present:
+            # Testing
+            test_loss   = []
+            test_token  = []
+            test_local  = []
+            test_repair = []
+            
+            for i in range(num_test/batch_size):
+                f_loss, f_token, f_repair, f_local = test_batch(i)
 
-	            test_loss.append(f_loss)
-	            test_token.append(f_token)
-	            test_local.append(f_local)
-	            test_repair.append(f_repair)
-	            
-	        test_loss   = np.mean(test_loss)
-	        test_token  = np.mean(test_token)
-	        test_local  = np.mean(test_local)
-	        test_repair = np.mean(test_repair)
+                test_loss.append(f_loss)
+                test_token.append(f_token)
+                test_local.append(f_local)
+                test_repair.append(f_repair)
+                
+            test_loss   = np.mean(test_loss)
+            test_token  = np.mean(test_token)
+            test_local  = np.mean(test_local)
+            test_repair = np.mean(test_repair)
 
-	        print "[Test] Loss: %g Token: %g Localization: %g Repair: %g" % (test_loss, test_token, test_local, test_repair)
-	        sys.stdout.flush()
+            print "[Test] Loss: %g Token: %g Localization: %g Repair: %g" % (test_loss, test_token, test_local, test_repair)
+            sys.stdout.flush()
 
-		    if test_repair > best_test_repair:
-		        best_test_repair = test_repair
-		        copyfile(os.path.join(ckpt_folder, 'saved-model-attn-%d' % step), os.path.join(os.path.join(ckpt_folder, 'best'), 'saved-model-attn-%d' % step))
-		        print "[Best Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
-		        sys.stdout.flush()
-	    else:
-	        print "[Test] No test data present"
-	        sys.stdout.flush()
+            if test_repair > best_test_repair:
+                best_test_repair = test_repair
+                copyfile(os.path.join(ckpt_folder, 'saved-model-attn-%d' % step), os.path.join(os.path.join(ckpt_folder, 'best'), 'saved-model-attn-%d' % step))
+                print "[Best Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
+                sys.stdout.flush()
+        else:
+            print "[Test] No test data present"
+            sys.stdout.flush()
 
-	        if valid_repair > best_test_repair:
-		        best_test_repair = valid_repair
-		        copyfile(os.path.join(ckpt_folder, 'saved-model-attn-%d' % step), os.path.join(os.path.join(ckpt_folder, 'best'), 'saved-model-attn-%d' % step))
-		        print "[Best Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
-		        sys.stdout.flush()
+            if valid_repair > best_test_repair:
+                best_test_repair = valid_repair
+                copyfile(os.path.join(ckpt_folder, 'saved-model-attn-%d' % step), os.path.join(os.path.join(ckpt_folder, 'best'), 'saved-model-attn-%d' % step))
+                print "[Best Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
+                sys.stdout.flush()
 
-	    print "[Time] Took %g minutes to run." % ((time.time() - start)/60)
-	    sys.stdout.flush()
+        print "[Time] Took %g minutes to run." % ((time.time() - start)/60)
+        sys.stdout.flush()
 else:
-	# Validation
+    # Validation
     valid_loss   = []
     valid_token  = []
     valid_local  = []
