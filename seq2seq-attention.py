@@ -37,9 +37,9 @@ parser.add_argument('resume_epoch', type=int)
 parser.add_argument('resume_training_minibatch', type=int)
 parser.add_argument('rnn_cell', help='One of RNN, LSTM or GRU.')
 parser.add_argument('ckpt_every', help='How often to checkpoint', type=int)
-parser.add_argument("--correct_pairs", help="Include correct-correct pairs.")
-parser.add_argument("--mux_network", help="Use the mux network to learn identifiers.")
-parser.add_argument("--skip_training", help="Don't train, just validate and test at the specified checkpoint.")
+parser.add_argument('--correct_pairs', action="store_true", help="Include correct-correct pairs.")
+parser.add_argument('--mux_network', action="store_true", help="Use the mux network to learn identifiers.")
+parser.add_argument('--skip_training', action="store_true", help="Don't train, just validate and test at the specified checkpoint.")
 
 args = parser.parse_args()
 
