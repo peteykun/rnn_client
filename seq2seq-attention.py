@@ -6,9 +6,24 @@
 import numpy as np
 import tensorflow as tf
 import os, time, sys
+from shutil import copyfile
 
 # Parse command line arguments
 import argparse
+
+# Set up logging to a file
+class Logger(object):
+    def __init__(self, filename='log'):
+        self.terminal = sys.stdout
+        self.log = open(filename, "a")
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def flush(self):
+    	self.terminal.flush()
+    	self.log.flush()
 
 parser = argparse.ArgumentParser(description='Run a repairing seq2seq RNN.')
 parser.add_argument('task_name', help='The task to run.')
@@ -24,15 +39,28 @@ parser.add_argument('rnn_cell', help='One of RNN, LSTM or GRU.')
 parser.add_argument('ckpt_every', help='How often to checkpoint', type=int)
 parser.add_argument("--correct_pairs", help="Include correct-correct pairs.")
 parser.add_argument("--mux_network", help="Use the mux network to learn identifiers.")
+parser.add_argument("--skip_training", help="Don't train, just validate and test at the specified checkpoint.")
 
 args = parser.parse_args()
 
 # In[2]:
 
 task_name    = args.task_name
+sys.stdout   = Logger(args.task_name)
 
 data_folder  = task_name + '_data'
 ckpt_folder  = task_name + '_checkpoints'
+
+# Make checkpoint directories
+try:
+    os.mkdir(ckpt_folder)
+except OSError:
+    pass
+
+try:
+    os.mkdir(os.path.join(ckpt_folder, 'best'))
+except OSError:
+    pass
 
 # Options
 shuffle_data  = True                # Shuffles the input data if set to True
@@ -40,6 +68,10 @@ correct_pairs = args.correct_pairs  # Removes correct-correct pairs if set to Fa
 mux_network   = args.mux_network    # Use a MUX network for learning IDs if set to True
 ckpt_every    = args.ckpt_every     # Store checkpoints every `ckpt_every` steps
 
+print 'Shuffle data:', shuffle_data
+print 'Correct pairs:', correct_pairs
+print 'Mux network:', mux_network
+print 'Ckpt every:', ckpt_every
 
 # In[18]:
 
@@ -47,21 +79,34 @@ ckpt_every    = args.ckpt_every     # Store checkpoints every `ckpt_every` steps
 batch_size = args.batch_size
 embedding_dim = args.embedding_dim
 
+print 'Batch size:', batch_size
+print 'Embedding dim:', embedding_dim
+
 # Network hyperparameters
 memory_dim = args.memory_dim
 num_layers = args.num_layers
 
+print 'Memory dim:', memory_dim
+print 'Num layers:', num_layers
+
 # Training variables
 epochs = args.epochs
+
+print 'Epochs:', epochs
 
 # Resume training from saved model? (0 = don't use saved model)
 resume_at = args.resume_at
 resume_epoch = args.resume_epoch
 resume_training_minibatch = args.resume_training_minibatch
 
+print 'Resume at:', resume_at
+print 'Resume epoch:', resume_epoch
+print 'Resume training minibatch:', resume_training_minibatch
+
 # Cell type: one of RNN, LSTM and GRU
 rnn_cell = args.rnn_cell
 
+print 'RNN cell:', rnn_cell
 
 # In[4]:
 
@@ -80,6 +125,12 @@ test_s = np.load(os.path.join(data_folder, 'select-test.npy'))
 
 tl_dict = np.load(os.path.join(data_folder, 'translate_dict.npy')).item()
 
+test_data_present = True
+
+if len(test_x) == 0:
+    test_data_present = False
+
+
 # Shuffle if required
 if shuffle_data:
     # Check to see if shuffled data is available
@@ -92,9 +143,10 @@ if shuffle_data:
         valid_y = np.load(os.path.join(data_folder, 'shuffled/fixes-validation.npy'))
         valid_s = np.load(os.path.join(data_folder, 'shuffled/select-validation.npy'))
 
-        test_x = np.load(os.path.join(data_folder, 'shuffled/mutated-test.npy'))
-        test_y = np.load(os.path.join(data_folder, 'shuffled/fixes-test.npy'))
-        test_s = np.load(os.path.join(data_folder, 'shuffled/select-test.npy'))
+        if test_data_present:
+            test_x = np.load(os.path.join(data_folder, 'shuffled/mutated-test.npy'))
+            test_y = np.load(os.path.join(data_folder, 'shuffled/fixes-test.npy'))
+            test_s = np.load(os.path.join(data_folder, 'shuffled/select-test.npy'))
         
         print "Successfully loaded shuffled data."
         sys.stdout.flush()
@@ -113,9 +165,10 @@ if shuffle_data:
         np.random.shuffle(triples)
         valid_x, valid_y, valid_s = zip(*triples)
 
-        triples = zip(list(test_x), list(test_y), list(test_s))
-        np.random.shuffle(triples)
-        test_x, test_y, test_s = zip(*triples)
+        if test_data_present:
+            triples = zip(list(test_x), list(test_y), list(test_s))
+            np.random.shuffle(triples)
+            test_x, test_y, test_s = zip(*triples)
 
         # Convert to np array
         train_x = np.array(train_x)
@@ -126,9 +179,10 @@ if shuffle_data:
         valid_y = np.array(valid_y)
         valid_s = np.array(valid_s)
 
-        test_x = np.array(test_x)
-        test_y = np.array(test_y)
-        test_s = np.array(test_s)
+        if test_data_present:
+            test_x = np.array(test_x)
+            test_y = np.array(test_y)
+            test_s = np.array(test_s)
     
         # Save for later
         try:
@@ -158,9 +212,10 @@ if not correct_pairs:
     new_valid_y = []
     new_valid_s = []
     
-    new_test_x = []
-    new_test_y = []
-    new_test_s = []
+    if test_data_present:
+        new_test_x = []
+        new_test_y = []
+        new_test_s = []
     
     for i in range(len(train_x)):
         if train_y[i][1] != 0:
@@ -173,12 +228,13 @@ if not correct_pairs:
             new_valid_x.append(valid_x[i])
             new_valid_y.append(valid_y[i])
             new_valid_s.append(valid_s[i])
-            
-    for i in range(len(test_x)):
-        if test_y[i][1] != 0:
-            new_test_x.append(test_x[i])
-            new_test_y.append(test_y[i])
-            new_test_s.append(test_s[i])
+
+    if test_data_present:
+        for i in range(len(test_x)):
+            if test_y[i][1] != 0:
+                new_test_x.append(test_x[i])
+                new_test_y.append(test_y[i])
+                new_test_s.append(test_s[i])
             
     # Convert to np array
     train_x = np.array(new_train_x)
@@ -189,9 +245,10 @@ if not correct_pairs:
     valid_y = np.array(new_valid_y)
     valid_s = np.array(new_valid_s)
 
-    test_x = np.array(new_test_x)
-    test_y = np.array(new_test_y)
-    test_s = np.array(new_test_s)
+    if test_data_present:
+        test_x = np.array(new_test_x)
+        test_y = np.array(new_test_y)
+        test_s = np.array(new_test_s)
 else:
     print "Including correct (i.e. no fix required) examples..."
     sys.stdout.flush()
@@ -206,9 +263,10 @@ if not mux_network:
     new_valid_y = []
     new_valid_s = []
     
-    new_test_x = []
-    new_test_y = []
-    new_test_s = []
+    if test_data_present:
+        new_test_x = []
+        new_test_y = []
+        new_test_s = []
     
     for i in range(len(train_x)):
         if train_s[i] != 1:
@@ -221,12 +279,13 @@ if not mux_network:
             new_valid_x.append(valid_x[i])
             new_valid_y.append(valid_y[i])
             new_valid_s.append(valid_s[i])
-            
-    for i in range(len(test_x)):
-        if test_s[i] != 1:
-            new_test_x.append(test_x[i])
-            new_test_y.append(test_y[i])
-            new_test_s.append(test_s[i])
+    
+    if test_data_present:
+        for i in range(len(test_x)):
+            if test_s[i] != 1:
+                new_test_x.append(test_x[i])
+                new_test_y.append(test_y[i])
+                new_test_s.append(test_s[i])
             
     # Convert to np array
     train_x = np.array(new_train_x)
@@ -237,9 +296,10 @@ if not mux_network:
     valid_y = np.array(new_valid_y)
     valid_s = np.array(new_valid_s)
 
-    test_x = np.array(new_test_x)
-    test_y = np.array(new_test_y)
-    test_s = np.array(new_test_s)
+    if test_data_present:
+        test_x = np.array(new_test_x)
+        test_y = np.array(new_test_y)
+        test_s = np.array(new_test_s)
 else:
     print "Using a MUX network..."
     sys.stdout.flush()
@@ -274,9 +334,10 @@ assert(len(np.shape(valid_x)) == 2)
 assert(len(np.shape(valid_y)) == 2)
 assert(len(np.shape(valid_s)) == 1)
 
-assert(len(np.shape(test_x))  == 2)
-assert(len(np.shape(test_y))  == 2)
-assert(len(np.shape(test_s))  == 1)
+if test_data_present:
+    assert(len(np.shape(test_x))  == 2)
+    assert(len(np.shape(test_y))  == 2)
+    assert(len(np.shape(test_s))  == 1)
 
 # In[5]:
 
@@ -365,6 +426,7 @@ train_op = optimizer.minimize(loss)
 # In[11]:
 
 saver = tf.train.Saver(tf.all_variables(), max_to_keep=5)
+best_saver = tf.train.Saver(tf.all_variables(), max_to_keep=1)
 
 
 # # Restore variables
@@ -517,42 +579,108 @@ def train_batch(batch_id):
 # In[ ]:
 
 step = resume_at
+best_test_repair = 0
 
-for t in range(resume_epoch, epochs):
-    # Training
-    start = time.time()
-    train_loss = []
-    
-    for i in range(resume_training_minibatch, num_train/batch_size):
-        f_loss = train_batch(i)
-        train_loss.append(f_loss)
-        
-        # Print progress
-        step += 1
-        
-        print "Step: %d\tEpoch: %g\tLoss: %g" % (step, t + float(i+1)/(num_train/batch_size), train_loss[-1])
-        sys.stdout.flush()
+if not args.skip_training:
+	for t in range(resume_epoch, epochs):
+	    # Training
+	    start = time.time()
+	    train_loss = []
+	    
+	    for i in range(resume_training_minibatch, num_train/batch_size):
+	        f_loss = train_batch(i)
+	        train_loss.append(f_loss)
+	        
+	        # Print progress
+	        step += 1
+	        
+	        print "Step: %d\tEpoch: %g\tLoss: %g" % (step, t + float(i+1)/(num_train/batch_size), train_loss[-1])
+	        sys.stdout.flush()
 
-        # Checkpoint
-        if step % ckpt_every == 0:
-            saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
-            print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t, i)
-            sys.stdout.flush()
-        
-    train_loss = np.mean(train_loss)
-    resume_training_minibatch = 0
+	        # Checkpoint
+	        if step % ckpt_every == 0:
+	            saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
+	            print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t, i)
+	            sys.stdout.flush()
+	        
+	    train_loss = np.mean(train_loss)
+	    resume_training_minibatch = 0
 
-    # Checkpoint before going into validation/testing
-    if step % ckpt_every != 0:
-        saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
-        print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t, i)
-        sys.stdout.flush()
-    
-    print "End of Epoch: %d" % (t+1)
-    print "[Training] Loss: %g" % (train_loss)
-    sys.stdout.flush()
+	    # Checkpoint before going into validation/testing
+	    if step % ckpt_every != 0:
+	        saver.save(sess, os.path.join(ckpt_folder, 'saved-model-attn'), global_step=step)
+	        print "[Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
+	        sys.stdout.flush()
+	    
+	    print "End of Epoch: %d" % (t+1)
+	    print "[Training] Loss: %g" % (train_loss)
+	    sys.stdout.flush()
 
-    # Validation
+	    # Validation
+	    valid_loss   = []
+	    valid_token  = []
+	    valid_local  = []
+	    valid_repair = []
+	    
+	    for i in range(num_validation/batch_size):
+	        f_loss, f_token, f_repair, f_local = validate_batch(i)
+
+	        valid_loss.append(f_loss)
+	        valid_token.append(f_token)
+	        valid_local.append(f_local)
+	        valid_repair.append(f_repair)
+	        
+	    valid_loss   = np.mean(valid_loss)
+	    valid_token  = np.mean(valid_token)
+	    valid_local  = np.mean(valid_local)
+	    valid_repair = np.mean(valid_repair)
+	    
+	    # Print epoch step and validation information
+	    print "[Validation] Loss: %g Token: %g Localization: %g Repair: %g" % (valid_loss, valid_token, valid_local, valid_repair)
+	    sys.stdout.flush()
+
+	    if test_data_present:
+	        # Testing
+	        test_loss   = []
+	        test_token  = []
+	        test_local  = []
+	        test_repair = []
+	        
+	        for i in range(num_test/batch_size):
+	            f_loss, f_token, f_repair, f_local = test_batch(i)
+
+	            test_loss.append(f_loss)
+	            test_token.append(f_token)
+	            test_local.append(f_local)
+	            test_repair.append(f_repair)
+	            
+	        test_loss   = np.mean(test_loss)
+	        test_token  = np.mean(test_token)
+	        test_local  = np.mean(test_local)
+	        test_repair = np.mean(test_repair)
+
+	        print "[Test] Loss: %g Token: %g Localization: %g Repair: %g" % (test_loss, test_token, test_local, test_repair)
+	        sys.stdout.flush()
+
+		    if test_repair > best_test_repair:
+		        best_test_repair = test_repair
+		        copyfile(os.path.join(ckpt_folder, 'saved-model-attn-%d' % step), os.path.join(os.path.join(ckpt_folder, 'best'), 'saved-model-attn-%d' % step))
+		        print "[Best Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
+		        sys.stdout.flush()
+	    else:
+	        print "[Test] No test data present"
+	        sys.stdout.flush()
+
+	        if valid_repair > best_test_repair:
+		        best_test_repair = valid_repair
+		        copyfile(os.path.join(ckpt_folder, 'saved-model-attn-%d' % step), os.path.join(os.path.join(ckpt_folder, 'best'), 'saved-model-attn-%d' % step))
+		        print "[Best Checkpoint] Checkpointed at Epoch %d, Minibatch %d." % (t+1, 0)
+		        sys.stdout.flush()
+
+	    print "[Time] Took %g minutes to run." % ((time.time() - start)/60)
+	    sys.stdout.flush()
+else:
+	# Validation
     valid_loss   = []
     valid_token  = []
     valid_local  = []
@@ -575,29 +703,31 @@ for t in range(resume_epoch, epochs):
     print "[Validation] Loss: %g Token: %g Localization: %g Repair: %g" % (valid_loss, valid_token, valid_local, valid_repair)
     sys.stdout.flush()
 
-    # Testing
-    test_loss   = []
-    test_token  = []
-    test_local  = []
-    test_repair = []
-    
-    for i in range(num_test/batch_size):
-        f_loss, f_token, f_repair, f_local = test_batch(i)
-
-        test_loss.append(f_loss)
-        test_token.append(f_token)
-        test_local.append(f_local)
-        test_repair.append(f_repair)
+    if test_data_present:
+        # Testing
+        test_loss   = []
+        test_token  = []
+        test_local  = []
+        test_repair = []
         
-    test_loss   = np.mean(test_loss)
-    test_token  = np.mean(test_token)
-    test_local  = np.mean(test_local)
-    test_repair = np.mean(test_repair)
+        for i in range(num_test/batch_size):
+            f_loss, f_token, f_repair, f_local = test_batch(i)
 
-    print "[Test] Loss: %g Token: %g Localization: %g Repair: %g" % (test_loss, test_token, test_local, test_repair)
-    print "[Time] Took %g minutes to run." % ((time.time() - start)/60)
-    sys.stdout.flush()
+            test_loss.append(f_loss)
+            test_token.append(f_token)
+            test_local.append(f_local)
+            test_repair.append(f_repair)
+            
+        test_loss   = np.mean(test_loss)
+        test_token  = np.mean(test_token)
+        test_local  = np.mean(test_local)
+        test_repair = np.mean(test_repair)
 
+        print "[Test] Loss: %g Token: %g Localization: %g Repair: %g" % (test_loss, test_token, test_local, test_repair)
+        sys.stdout.flush()
+    else:
+        print "[Test] No test data present"
+        sys.stdout.flush()
 
 # In[ ]:
 
