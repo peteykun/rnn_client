@@ -37,6 +37,7 @@ parser.add_argument('resume_epoch', type=int)
 parser.add_argument('resume_training_minibatch', type=int)
 parser.add_argument('rnn_cell', help='One of RNN, LSTM or GRU.')
 parser.add_argument('ckpt_every', help='How often to checkpoint', type=int)
+parser.add_argument('dropout', help='Probability to use for dropout', type=float)
 parser.add_argument('--correct_pairs', action="store_true", help="Include correct-correct pairs.")
 parser.add_argument('--mux_network', action="store_true", help="Use the mux network to learn identifiers.")
 parser.add_argument('--skip_training', action="store_true", help="Don't train, just validate and test at the specified checkpoint.")
@@ -202,6 +203,20 @@ if shuffle_data:
         np.save(os.path.join(data_folder, 'shuffled/fixes-test.npy'), test_y)
         np.save(os.path.join(data_folder, 'shuffled/select-test.npy'), test_s)
 
+print 'after loading'
+
+num_train = len(train_x)
+print 'Training:', num_train, 'examples'
+sys.stdout.flush()
+
+num_validation = len(valid_x)
+print 'Validation:', num_validation, 'examples'
+sys.stdout.flush()
+
+num_test = len(test_x)
+print 'Test:', num_test, 'examples'
+sys.stdout.flush()
+
 if not correct_pairs:
     # Remove correct-correct pairs    
     new_train_x = []
@@ -252,6 +267,21 @@ if not correct_pairs:
 else:
     print "Including correct (i.e. no fix required) examples..."
     sys.stdout.flush()
+
+print 'correct-correct pairs'
+
+num_train = len(train_x)
+print 'Training:', num_train, 'examples'
+sys.stdout.flush()
+
+num_validation = len(valid_x)
+print 'Validation:', num_validation, 'examples'
+sys.stdout.flush()
+
+num_test = len(test_x)
+print 'Test:', num_test, 'examples'
+sys.stdout.flush()
+
     
 if not mux_network:
     # Discard select line values of 1 (are 'name' types)
@@ -357,7 +387,7 @@ sys.stdout.flush()
 # In[6]:
 
 # Don't use all the VRAM!
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.4)
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1)
 sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
 
@@ -366,6 +396,9 @@ sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 # We allocate a `labels` placeholder using the same convention. A `weights` constant specifies cross-entropy weights for each label at each timestep.
 
 # In[7]:
+
+if args.dropout != 0:
+    keep_prob = tf.placeholder(tf.float32)
 
 if mux_network:
     enc_inp = [tf.placeholder(tf.int32, shape=(None,), name="inp%i" % t) for t in range(seq_length + 1)]
@@ -399,6 +432,9 @@ elif rnn_cell == 'RNN':
 else:
     raise Exception('unsupported rnn cell type: %s' % rnn_cell)
 
+if args.dropout != 0:
+    constituent_cell = tf.nn.rnn_cell.DropoutWrapper(constituent_cell, input_keep_prob=keep_prob, output_keep_prob=keep_prob)
+
 if num_layers > 1:
     cell = tf.nn.rnn_cell.MultiRNNCell([constituent_cell] * num_layers)
 else:
@@ -420,7 +456,11 @@ loss = tf.nn.seq2seq.sequence_loss(dec_outputs, labels, weights, vocab_size + 1)
 # In[10]:
 
 optimizer = tf.train.AdamOptimizer()
-train_op = optimizer.minimize(loss)
+#train_op = optimizer.minimize(loss)
+
+gvs = optimizer.compute_gradients(loss)
+capped_gvs = [(tf.clip_by_value(grad, -1., 1.), var) for grad, var in gvs]
+train_op = optimizer.apply_gradients(capped_gvs)
 
 
 # In[11]:
@@ -478,13 +518,15 @@ def validate_batch(batch_id):
 
     feed_dict = {enc_inp[t]: X[t] for t in range(seq_length)}
     feed_dict.update({labels[t]: Y[t] for t in range(out_seq_length)})
-    feed_dict.update({dec_inp[t]: Y[t] for t in range(out_seq_length - 1)})
         
     if mux_network:
         S = valid_s[batch_id*batch_size:(batch_id+1)*batch_size]
         feed_dict.update({enc_inp[seq_length]: S})
+    
+    if args.dropout != 0:
+        feed_dict.update({keep_prob = 1.0})
 
-    _, loss_t = sess.run([train_op, loss], feed_dict)
+    loss_t = sess.run([loss], feed_dict)
     dec_outputs_batch = sess.run(dec_outputs, feed_dict)
     Y_hat = [logits_t.argmax(axis=1) for logits_t in dec_outputs_batch]
     token_accuracy = float(np.count_nonzero(np.equal(Y, Y_hat)))/np.prod(np.shape(Y))
@@ -518,13 +560,15 @@ def test_batch(batch_id):
 
     feed_dict = {enc_inp[t]: X[t] for t in range(seq_length)}
     feed_dict.update({labels[t]: Y[t] for t in range(out_seq_length)})
-    feed_dict.update({dec_inp[t]: Y[t] for t in range(out_seq_length - 1)})
         
     if mux_network:
         S = test_s[batch_id*batch_size:(batch_id+1)*batch_size]
         feed_dict.update({enc_inp[seq_length]: S})
 
-    _, loss_t = sess.run([train_op, loss], feed_dict)
+    if args.dropout != 0:
+        feed_dict.update({keep_prob = 1.0})
+
+    loss_t = sess.run([loss], feed_dict)
     dec_outputs_batch = sess.run(dec_outputs, feed_dict)
     Y_hat = [logits_t.argmax(axis=1) for logits_t in dec_outputs_batch]
     token_accuracy = float(np.count_nonzero(np.equal(Y, Y_hat)))/np.prod(np.shape(Y))
@@ -560,11 +604,13 @@ def train_batch(batch_id):
         
     feed_dict = {enc_inp[t]: X[t] for t in range(seq_length)}
     feed_dict.update({labels[t]: Y[t] for t in range(out_seq_length)})
-    feed_dict.update({dec_inp[t]: Y[t] for t in range(out_seq_length - 1)})
     
     if mux_network:
         S = train_s[batch_id*batch_size:(batch_id+1)*batch_size]
         feed_dict.update({enc_inp[seq_length]: S})
+
+    if args.dropout != 0:
+        feed_dict.update({keep_prob = 1.0-args.dropout})
 
     _, loss_t = sess.run([train_op, loss], feed_dict)
         
