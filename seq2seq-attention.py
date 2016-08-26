@@ -524,7 +524,7 @@ def validate_batch(batch_id):
         feed_dict.update({enc_inp[seq_length]: S})
     
     if args.dropout != 0:
-        feed_dict.update({keep_prob = 1.0})
+        feed_dict.update({keep_prob: 1.0})
 
     loss_t = sess.run([loss], feed_dict)
     dec_outputs_batch = sess.run(dec_outputs, feed_dict)
@@ -566,7 +566,7 @@ def test_batch(batch_id):
         feed_dict.update({enc_inp[seq_length]: S})
 
     if args.dropout != 0:
-        feed_dict.update({keep_prob = 1.0})
+        feed_dict.update({keep_prob: 1.0})
 
     loss_t = sess.run([loss], feed_dict)
     dec_outputs_batch = sess.run(dec_outputs, feed_dict)
@@ -610,7 +610,7 @@ def train_batch(batch_id):
         feed_dict.update({enc_inp[seq_length]: S})
 
     if args.dropout != 0:
-        feed_dict.update({keep_prob = 1.0-args.dropout})
+        feed_dict.update({keep_prob: 1.0-args.dropout})
 
     _, loss_t = sess.run([train_op, loss], feed_dict)
         
