@@ -41,6 +41,7 @@ parser.add_argument('dropout', help='Probability to use for dropout', type=float
 parser.add_argument('--correct_pairs', action="store_true", help="Include correct-correct pairs.")
 parser.add_argument('--mux_network', action="store_true", help="Use the mux network to learn identifiers.")
 parser.add_argument('--skip_training', action="store_true", help="Don't train, just validate and test at the specified checkpoint.")
+parser.add_argument('--stochastic', action="store_true", help="Use stochastic sampling")
 
 args = parser.parse_args()
 
@@ -508,6 +509,19 @@ def line_equal(y, y_hat):
 
     return np.array_equal(y_line, y_hat_line)
 
+def normalize_probabilities(x):
+    x = x.astype(np.float32)
+    shifted_x = x - np.min(x)
+    return shifted_x/np.sum(shifted_x)
+
+def argsample(array):
+    result = []
+
+    for row in array.T:
+        result.append(np.random.choice(len(row), p=normalize_probabilities(row)))
+
+    return np.array(result)
+
 def validate_batch(batch_id):
     X = valid_x[batch_id*batch_size:(batch_id+1)*batch_size]
     Y = valid_y[batch_id*batch_size:(batch_id+1)*batch_size]
@@ -528,7 +542,12 @@ def validate_batch(batch_id):
 
     loss_t = sess.run([loss], feed_dict)
     dec_outputs_batch = sess.run(dec_outputs, feed_dict)
-    Y_hat = [logits_t.argmax(axis=1) for logits_t in dec_outputs_batch]
+
+    if args.stochastic:
+        Y_hat = [argsample(logits_t) for logits_t in dec_outputs_batch]
+    else:
+        Y_hat = [logits_t.argmax(axis=1) for logits_t in dec_outputs_batch]
+
     token_accuracy = float(np.count_nonzero(np.equal(Y, Y_hat)))/np.prod(np.shape(Y))
 
     Y = np.array(Y, dtype=np.int32).T
@@ -570,7 +589,12 @@ def test_batch(batch_id):
 
     loss_t = sess.run([loss], feed_dict)
     dec_outputs_batch = sess.run(dec_outputs, feed_dict)
-    Y_hat = [logits_t.argmax(axis=1) for logits_t in dec_outputs_batch]
+
+    if args.stochastic:
+        Y_hat = [argsample(logits_t) for logits_t in dec_outputs_batch]
+    else:
+        Y_hat = [logits_t.argmax(axis=1) for logits_t in dec_outputs_batch]
+    
     token_accuracy = float(np.count_nonzero(np.equal(Y, Y_hat)))/np.prod(np.shape(Y))
 
     Y = np.array(Y, dtype=np.int32).T
