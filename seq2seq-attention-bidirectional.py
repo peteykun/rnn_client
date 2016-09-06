@@ -51,7 +51,7 @@ task_name    = args.task_name
 sys.stdout   = Logger(args.task_name)
 
 data_folder  = task_name + '_data'
-ckpt_folder  = task_name + '_checkpoints'
+ckpt_folder  = task_name + '_checkpoints_bidirectional'
 
 # Make checkpoint directories
 try:
@@ -388,6 +388,7 @@ sys.stdout.flush()
 # In[6]:
 
 # Don't use all the VRAM!
+print "Instantiating session..."
 gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=1)
 sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
@@ -397,6 +398,7 @@ sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 # We allocate a `labels` placeholder using the same convention. A `weights` constant specifies cross-entropy weights for each label at each timestep.
 
 # In[7]:
+print "Creating placeholders..."
 
 if args.dropout != 0:
     keep_prob = tf.placeholder(tf.float32)
@@ -423,6 +425,7 @@ prev_mem = tf.zeros((batch_size, memory_dim))
 # There is a **lot** of complexity hidden in these two calls, and it's certainly worth digging into both in order to really understand how this is working.
 
 # In[8]:
+print "Fetching cells..."
 
 constituent_cell = []
 cell = []
@@ -446,6 +449,7 @@ for i in range(3):
         cell.append(constituent_cell[i])
 
 # Without teacher forcing, with attention
+print "Building core network..."
 dec_outputs, dec_memory = custom_seq2seq.embedding_attention_bidirectional_seq2seq(enc_inp, dec_inp, cell[0], cell[1], cell[2], vocab_size+1, vocab_size+1, embedding_dim, feed_previous=True)
 
 
