@@ -424,25 +424,29 @@ prev_mem = tf.zeros((batch_size, memory_dim))
 
 # In[8]:
 
-if rnn_cell == 'LSTM':
-    constituent_cell = tf.nn.rnn_cell.BasicLSTMCell(memory_dim)
-elif rnn_cell == 'GRU':
-    constituent_cell = tf.nn.rnn_cell.GRUCell(memory_dim)
-elif rnn_cell == 'RNN':
-    constituent_cell = tf.nn.rnn_cell.BasicRNNCell(memory_dim)
-else:
-    raise Exception('unsupported rnn cell type: %s' % rnn_cell)
+constituent_cell = []
+cell = []
 
-if args.dropout != 0:
-    constituent_cell = tf.nn.rnn_cell.DropoutWrapper(constituent_cell, input_keep_prob=keep_prob, output_keep_prob=keep_prob)
+for i in range(3):
+    if rnn_cell == 'LSTM':
+        constituent_cell.append(tf.nn.rnn_cell.BasicLSTMCell(memory_dim/(2 if i < 2 else 1)))
+    elif rnn_cell == 'GRU':
+        constituent_cell.append(tf.nn.rnn_cell.GRUCell(memory_dim/(2 if i < 2 else 1)))
+    elif rnn_cell == 'RNN':
+        constituent_cell.append(tf.nn.rnn_cell.BasicRNNCell(memory_dim/(2 if i < 2 else 1)))
+    else:
+        raise Exception('unsupported rnn cell type: %s' % rnn_cell)
 
-if num_layers > 1:
-    cell = tf.nn.rnn_cell.MultiRNNCell([constituent_cell] * num_layers)
-else:
-    cell = constituent_cell
+    if args.dropout != 0:
+        constituent_cell[i] = tf.nn.rnn_cell.DropoutWrapper(constituent_cell[i], input_keep_prob=keep_prob, output_keep_prob=keep_prob)
+
+    if num_layers > 1:
+        cell.append(tf.nn.rnn_cell.MultiRNNCell([constituent_cell[i]] * num_layers))
+    else:
+        cell.append(constituent_cell[i])
 
 # Without teacher forcing, with attention
-dec_outputs, dec_memory = custom_seq2seq.embedding_attention_bidirectional_seq2seq(enc_inp, dec_inp, cell, vocab_size+1, vocab_size+1, embedding_dim, feed_previous=True)
+dec_outputs, dec_memory = custom_seq2seq.embedding_attention_bidirectional_seq2seq(enc_inp, dec_inp, cell[0], cell[1], cell[2], vocab_size+1, vocab_size+1, embedding_dim, feed_previous=True)
 
 
 # Build a standard sequence loss function: mean cross-entropy over each item of each sequence.
